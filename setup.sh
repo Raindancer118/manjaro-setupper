@@ -33,14 +33,18 @@ if [[ -z "${SCRIPT_DIR}" || ! -d "${MODULES_DIR}" ]]; then
     exec bash "${TMPDIR_REPO}/repo/setup.sh" "$@"
 fi
 
-# ── Colors (für Terminal-Ausgabe während Installation) ───────
-BLUE='\033[38;2;96;165;250m'
-DIM='\033[38;2;71;85;105m'
-GREEN='\033[38;2;74;222;128m'
-YELLOW='\033[38;2;250;204;21m'
-RED='\033[38;2;239;68;68m'
+# ── ANSI-Farben (für Terminal-Ausgabe während Installation) ──
+ANSI_BLUE='\033[38;2;96;165;250m'
+ANSI_DIM='\033[38;2;71;85;105m'
+ANSI_GREEN='\033[38;2;74;222;128m'
+ANSI_YELLOW='\033[38;2;250;204;21m'
+ANSI_RED='\033[38;2;239;68;68m'
 ANSI_BOLD='\033[1m'
-RESET='\033[0m'
+ANSI_RESET='\033[0m'
+
+# Kompatibilitäts-Aliase für Module
+BLUE="${ANSI_BLUE}" DIM="${ANSI_DIM}" GREEN="${ANSI_GREEN}"
+YELLOW="${ANSI_YELLOW}" RED="${ANSI_RED}" RESET="${ANSI_RESET}"
 
 # Hex-Farben für gum
 GUM_BLUE="#60a5fa"
@@ -49,12 +53,12 @@ GUM_YELLOW="#facc15"
 GUM_RED="#ef4444"
 GUM_DIM="#475569"
 
-# ── Log-Funktionen (Terminal-Ausgabe während Installation) ────
-info()    { echo -e "  ${BLUE}·${RESET} $*"; }
-success() { echo -e "  ${GREEN}✓${RESET} $*"; }
-warn()    { echo -e "  ${YELLOW}△${RESET} $*"; }
-error()   { echo -e "  ${RED}✗${RESET} $*" >&2; }
-skip()    { echo -e "  ${DIM}· $* — übersprungen${RESET}"; }
+# ── Log-Funktionen ────────────────────────────────────────────
+info()    { echo -e "  ${ANSI_BLUE}·${ANSI_RESET} $*"; }
+success() { echo -e "  ${ANSI_GREEN}✓${ANSI_RESET} $*"; }
+warn()    { echo -e "  ${ANSI_YELLOW}△${ANSI_RESET} $*"; }
+error()   { echo -e "  ${ANSI_RED}✗${ANSI_RESET} $*" >&2; }
+skip()    { echo -e "  ${ANSI_DIM}· $* — übersprungen${ANSI_RESET}"; }
 
 header() {
     clear
@@ -63,22 +67,15 @@ header() {
         --border-foreground="${GUM_BLUE}" \
         --padding="1 4" \
         --margin="1 2" \
-        "$(gum style --bold --foreground="${GUM_BLUE}" 'M A N J A R O   S E T U P')" \
+        "$(gum style --foreground="${GUM_BLUE}" 'M A N J A R O   S E T U P')" \
         "" \
         "$(gum style --foreground="${GUM_DIM}" "$*")"
 }
 
 section() {
     echo ""
-    gum style \
-        --foreground="${GUM_BLUE}" \
-        --bold \
-        --margin="0 2" \
-        "▸  $*"
-    gum style \
-        --foreground="${GUM_DIM}" \
-        --margin="0 2" \
-        "────────────────────────────────────────"
+    gum style --foreground="${GUM_BLUE}" --margin="0 2" "▸  $*"
+    gum style --foreground="${GUM_DIM}"  --margin="0 2" "────────────────────────────────────────"
 }
 
 # ── Paket-Management ──────────────────────────────────────────
@@ -119,9 +116,11 @@ install_aur() {
 }
 
 # ── gum-Wrapper ───────────────────────────────────────────────
+#
+# WICHTIG: checklist() und inputbox() werden mit $() gecapturt.
+# Daher muss aller Display-Output (gum style, echo) nach /dev/tty,
+# damit er nicht als Rückgabewert landet.
 
-# checklist title text tag label status [tag label status ...]
-# Gibt gewählte Tags (space-separated) zurück.
 checklist() {
     local title="$1"
     local text="$2"
@@ -135,7 +134,7 @@ checklist() {
         shift 3
     done
 
-    # Vorausgwählte Items als --selected-Flags
+    # --selected-Flags für vorausgewählte Items
     local -a selected_args=()
     for i in "${!defaults[@]}"; do
         if [[ "${defaults[$i]}" == "on" ]]; then
@@ -143,18 +142,16 @@ checklist() {
         fi
     done
 
-    echo ""
-    gum style \
-        --foreground="${GUM_BLUE}" \
-        --bold \
-        --margin="0 2" \
-        "◆  ${title}"
-    [[ -n "${text}" ]] && gum style \
-        --foreground="${GUM_DIM}" \
-        --margin="0 2" \
-        "${text}"
-    echo ""
+    # Display → /dev/tty (nicht capturen)
+    {
+        echo ""
+        gum style --foreground="${GUM_BLUE}" --margin="0 2" "◆  ${title}"
+        [[ -n "${text}" ]] && \
+            gum style --foreground="${GUM_DIM}" --margin="0 2" "${text}"
+        echo ""
+    } >/dev/tty
 
+    # gum choose: Items via stdin, TUI via /dev/tty, Ergebnis via stdout
     local chosen
     chosen=$(printf '%s\n' "${labels[@]}" | \
         gum choose --no-limit \
@@ -167,7 +164,7 @@ checklist() {
 
     [[ -z "${chosen}" ]] && return 0
 
-    # Labels → Tags zurückführen
+    # Label → Tag zurückführen
     local -a result_tags=()
     while IFS= read -r chosen_lbl; do
         for i in "${!labels[@]}"; do
@@ -185,8 +182,14 @@ inputbox() {
     local title="$1"
     local text="$2"
     local default="${3:-}"
-    echo ""
-    gum style --foreground="${GUM_BLUE}" --bold --margin="0 2" "◆  ${title}"
+
+    # Display → /dev/tty
+    {
+        echo ""
+        gum style --foreground="${GUM_BLUE}" --margin="0 2" "◆  ${title}"
+    } >/dev/tty
+
+    # gum input: TUI via /dev/tty, Eingabewert via stdout (wird gecapturt)
     gum input \
         --placeholder="${text}" \
         --value="${default}" \
@@ -201,8 +204,9 @@ yesno() {
     local title="$1"
     local text="$2"
     echo ""
-    gum style --foreground="${GUM_BLUE}" --bold --margin="0 2" "◆  ${title}"
-    [[ -n "${text}" ]] && gum style --foreground="${GUM_DIM}" --margin="0 2" "${text}"
+    gum style --foreground="${GUM_BLUE}" --margin="0 2" "◆  ${title}"
+    [[ -n "${text}" ]] && \
+        gum style --foreground="${GUM_DIM}" --margin="0 4" "${text}"
     echo ""
     gum confirm \
         --prompt.foreground="${GUM_BLUE}" \
@@ -222,7 +226,7 @@ msgbox() {
         --border-foreground="${GUM_BLUE}" \
         --padding="1 3" \
         --margin="0 2" \
-        "$(gum style --bold --foreground="${GUM_BLUE}" "${title}")" \
+        "${title}" \
         "" \
         "${text}"
     echo ""
@@ -231,7 +235,8 @@ msgbox() {
 
 # ── Exports für Module ────────────────────────────────────────
 export SCRIPT_DIR MODULES_DIR
-export BLUE DIM GREEN YELLOW RED ANSI_BOLD RESET
+export ANSI_BLUE ANSI_DIM ANSI_GREEN ANSI_YELLOW ANSI_RED ANSI_BOLD ANSI_RESET
+export BLUE DIM GREEN YELLOW RED RESET
 export GUM_BLUE GUM_GREEN GUM_YELLOW GUM_RED GUM_DIM
 export -f info success warn error skip header section
 export -f pkg_installed install_pkg install_aur
@@ -244,10 +249,14 @@ declare -A MODULE_NOTES=()
 # ── Abbruch-Handler ───────────────────────────────────────────
 trap 'clear
 echo ""
-gum style --border=rounded --border-foreground="${GUM_YELLOW}" --padding="1 3" --margin="1 2" \
-    "$(gum style --bold --foreground="${GUM_YELLOW}" "△  Setup abgebrochen")" \
+gum style \
+    --border=rounded \
+    --border-foreground="${GUM_YELLOW}" \
+    --padding="1 3" \
+    --margin="1 2" \
+    "△  Setup abgebrochen" \
     "" \
-    "$(gum style --foreground="${GUM_DIM}" "Bisher installiertes bleibt erhalten.")"
+    "Bisher installiertes bleibt erhalten."
 echo ""
 exit 130' INT TERM
 
@@ -257,13 +266,10 @@ exit 130' INT TERM
 
 bootstrap() {
     clear
-
-    # Minimal-Banner vor gum (gum noch nicht verfügbar)
-    echo -e "\n${ANSI_BOLD}${BLUE}  M A N J A R O   S E T U P${RESET}"
-    echo -e "  ${DIM}──────────────────────────────────${RESET}"
+    echo -e "\n${ANSI_BOLD}${ANSI_BLUE}  M A N J A R O   S E T U P${ANSI_RESET}"
+    echo -e "  ${ANSI_DIM}──────────────────────────────────${ANSI_RESET}"
     echo -e "  Bootstrap wird vorbereitet ...\n"
 
-    # OS-Prüfung
     if [[ ! -f /etc/os-release ]]; then
         error "/etc/os-release nicht gefunden. Nur Manjaro/Arch wird unterstützt."
         exit 1
@@ -280,11 +286,10 @@ bootstrap() {
         warn "Du läufst als root. Normaler User mit sudo-Rechten empfohlen."
     fi
 
-    info "Bootstrap-Pakete werden installiert ..."
+    info "Bootstrap-Pakete werden installiert (git, curl, base-devel, wget, gum) ..."
     sudo pacman -Sy --noconfirm --needed git curl base-devel wget gum 2>&1 \
         | grep -v "^warning:" || true
-    success "Bootstrap abgeschlossen — gum ist bereit."
-
+    success "Bootstrap abgeschlossen."
     sleep 1
 }
 
@@ -338,7 +343,7 @@ declare -A MODULE_DEFAULT=(
 )
 
 step1_module_selection() {
-    local items=()
+    local -a items=()
     for tag in "${MODULE_TAGS[@]}"; do
         items+=("${tag}" "${MODULE_LABELS[$tag]}" "${MODULE_DEFAULT[$tag]}")
     done
@@ -350,18 +355,18 @@ step1_module_selection() {
 }
 
 step4_confirmation() {
-    local selected_modules=("$@")
+    local -a selected_modules=("$@")
     echo ""
     gum style \
         --border=rounded \
         --border-foreground="${GUM_BLUE}" \
         --padding="1 3" \
         --margin="0 2" \
-        "$(gum style --bold --foreground="${GUM_BLUE}" "Folgende Module werden installiert:")" \
-        "" \
-        "$(for tag in "${selected_modules[@]}"; do
-            gum style --foreground="${GUM_GREEN}" "  ✓  ${MODULE_LABELS[$tag]}"
-        done)"
+        "Folgende Module werden installiert:"
+    echo ""
+    for tag in "${selected_modules[@]}"; do
+        gum style --foreground="${GUM_GREEN}" --margin="0 4" "✓  ${MODULE_LABELS[$tag]}"
+    done
     echo ""
     gum confirm \
         --prompt.foreground="${GUM_BLUE}" \
@@ -380,26 +385,27 @@ show_summary() {
         --border-foreground="${GUM_BLUE}" \
         --padding="1 4" \
         --margin="1 2" \
-        --width=60 \
-        "$(gum style --bold --foreground="${GUM_BLUE}" 'M A N J A R O   S E T U P  —  Zusammenfassung')" \
-        "" \
-        "$(for tag in "${MODULE_TAGS[@]}"; do
-            local status="${MODULE_STATUS[$tag]:-skipped}"
-            local note="${MODULE_NOTES[$tag]:-}"
-            local label="${MODULE_LABELS[$tag]}"
-            local padded
-            printf -v padded "%-30s" "${label}"
-            case "${status}" in
-                success) gum style --foreground="${GUM_GREEN}"  "  ✓  ${padded}${note}" ;;
-                warn)    gum style --foreground="${GUM_YELLOW}" "  △  ${padded}${note}" ;;
-                error)   gum style --foreground="${GUM_RED}"    "  ✗  ${padded}${note}" ;;
-                skipped) gum style --foreground="${GUM_DIM}"    "  ─  ${padded}Übersprungen" ;;
-            esac
-        done)" \
-        "" \
-        "$(gum style --foreground="${GUM_DIM}" "One-Liner für neue Systeme:")" \
-        "$(gum style --foreground="${GUM_BLUE}" "bash <(curl -fsSL https://raw.githubusercontent.com/Raindancer118/manjaro-setupper/main/setup.sh)")"
+        "M A N J A R O   S E T U P  —  Zusammenfassung"
+    echo ""
 
+    for tag in "${MODULE_TAGS[@]}"; do
+        local status="${MODULE_STATUS[$tag]:-skipped}"
+        local note="${MODULE_NOTES[$tag]:-}"
+        local label="${MODULE_LABELS[$tag]}"
+        local padded
+        printf -v padded "%-32s" "${label}"
+        case "${status}" in
+            success) gum style --foreground="${GUM_GREEN}"  --margin="0 2" "✓  ${padded}${note}" ;;
+            warn)    gum style --foreground="${GUM_YELLOW}" --margin="0 2" "△  ${padded}${note}" ;;
+            error)   gum style --foreground="${GUM_RED}"    --margin="0 2" "✗  ${padded}${note}" ;;
+            skipped) gum style --foreground="${GUM_DIM}"    --margin="0 2" "─  ${padded}Übersprungen" ;;
+        esac
+    done
+
+    echo ""
+    gum style --foreground="${GUM_DIM}"  --margin="0 2" "One-Liner für neue Systeme:"
+    gum style --foreground="${GUM_BLUE}" --margin="0 2" \
+        "bash <(curl -fsSL https://raw.githubusercontent.com/Raindancer118/manjaro-setupper/main/setup.sh)"
     echo ""
     gum input --placeholder="[Enter] zum Beenden" --prompt="" --width=30 &>/dev/null || true
 }
@@ -436,7 +442,6 @@ run_module() {
 
 main() {
     bootstrap
-
     header "Dein System wird konfiguriert."
 
     echo ""
@@ -457,7 +462,8 @@ main() {
 
     if [[ -z "${selected_str// /}" ]]; then
         echo ""
-        gum style --foreground="${GUM_YELLOW}" --margin="0 2" "△  Keine Module gewählt. Setup beendet."
+        gum style --foreground="${GUM_YELLOW}" --margin="0 2" \
+            "△  Keine Module gewählt. Setup beendet."
         exit 0
     fi
 
@@ -466,7 +472,8 @@ main() {
     # Schritt 4: Bestätigung
     if ! step4_confirmation "${SELECTED_MODULES[@]}"; then
         echo ""
-        gum style --foreground="${GUM_YELLOW}" --margin="0 2" "△  Abgebrochen. Keine Änderungen vorgenommen."
+        gum style --foreground="${GUM_YELLOW}" --margin="0 2" \
+            "△  Abgebrochen. Keine Änderungen vorgenommen."
         exit 0
     fi
 
@@ -479,7 +486,6 @@ main() {
         run_module "${tag}"
     done
 
-    # Nicht gewählte Module als skipped markieren
     for tag in "${MODULE_TAGS[@]}"; do
         if [[ -z "${MODULE_STATUS[$tag]:-}" ]]; then
             MODULE_STATUS[$tag]="skipped"
