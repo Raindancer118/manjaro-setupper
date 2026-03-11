@@ -28,17 +28,21 @@ run_module_main() {
     for opt in ${selected}; do OPTS[$opt]=1; done
 
     # Timeshift-Typ abfragen
-    local timeshift_type=""
+    local timeshift_type="rsync"
     if [[ -n "${OPTS[timeshift]:-}" ]]; then
-        timeshift_type=$(dialog \
-            --backtitle "Manjaro Setup" \
-            --title "Timeshift — Backup-Typ" \
-            --stdout \
-            --radiolist "Welchen Backup-Typ für Timeshift?" \
-            10 50 2 \
-            "btrfs" "BTRFS (empfohlen für BTRFS-Dateisystem)" "on" \
-            "rsync" "RSYNC (für ext4 und andere)"              "off" \
-            2>/dev/null) || timeshift_type="rsync"
+        local _ts_tmp
+        _ts_tmp=$(mktemp /tmp/manjaro-setup-XXXXX)
+        echo -e "\n  \033[38;2;96;165;250m◆  Timeshift — Backup-Typ\033[0m" >/dev/tty
+        gum choose \
+            --cursor="▶ " \
+            --cursor.foreground="${GUM_BLUE}" \
+            "BTRFS (empfohlen für BTRFS-Dateisystem)" \
+            "RSYNC (für ext4 und andere)" \
+            >"${_ts_tmp}" 2>/dev/null || true
+        local _ts_choice
+        _ts_choice=$(< "${_ts_tmp}")
+        rm -f "${_ts_tmp}"
+        [[ "${_ts_choice}" == BTRFS* ]] && timeshift_type="btrfs"
     fi
 
     # Sudo-Warnung

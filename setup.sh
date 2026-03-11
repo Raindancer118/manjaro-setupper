@@ -117,9 +117,10 @@ install_aur() {
 
 # ── gum-Wrapper ───────────────────────────────────────────────
 #
-# WICHTIG: checklist() und inputbox() werden mit $() gecapturt.
-# Daher muss aller Display-Output (gum style, echo) nach /dev/tty,
-# damit er nicht als Rückgabewert landet.
+# KERNPROBLEM: gum choose/input in $() Subshells erben stdin nicht
+# zuverlässig als TTY. Lösung: gum direkt ausführen (NICHT in $()),
+# Output in Tempfile schreiben. checklist() gibt Tags per printf zurück
+# → das kann der Aufrufer weiterhin mit $() capturen.
 
 checklist() {
     local title="$1"
@@ -134,33 +135,33 @@ checklist() {
         shift 3
     done
 
-    # --selected-Flags für vorausgewählte Items
     local -a selected_args=()
     for i in "${!defaults[@]}"; do
-        if [[ "${defaults[$i]}" == "on" ]]; then
-            selected_args+=("--selected=${labels[$i]}")
-        fi
+        [[ "${defaults[$i]}" == "on" ]] && selected_args+=("--selected=${labels[$i]}")
     done
 
-    # Display → /dev/tty mit echo (kein gum style — vermeidet OSC-Queries)
-    {
-        echo ""
-        echo -e "  \033[38;2;96;165;250m◆  ${title}\033[0m"
-        [[ -n "${text}" ]] && echo -e "  \033[38;2;71;85;105m${text}\033[0m"
-        echo ""
-    } >/dev/tty
+    # Display direkt auf Terminal (echo, kein gum style → keine OSC-Queries)
+    echo -e "\n  \033[38;2;96;165;250m◆  ${title}\033[0m" >/dev/tty
+    [[ -n "${text}" ]] && echo -e "  \033[38;2;71;85;105m${text}\033[0m" >/dev/tty
+    echo "" >/dev/tty
 
-    # Items als ARGUMENTE übergeben (NICHT via stdin-Pipe!).
-    # Stdin-Pipe würde gum choose in den non-interaktiven Modus zwingen.
-    local chosen
-    chosen=$(gum choose --no-limit \
+    # gum choose NICHT in $() — Output in Tempfile.
+    # So bleibt stdin=TTY und das TUI rendert korrekt.
+    local tmpfile
+    tmpfile=$(mktemp /tmp/manjaro-setup-XXXXX)
+
+    gum choose --no-limit \
         "${selected_args[@]}" \
         --cursor="▶ " \
         --cursor.foreground="${GUM_BLUE}" \
         --selected.foreground="${GUM_GREEN}" \
         --header="" \
         "${labels[@]}" \
-        2>/dev/null) || true
+        >"${tmpfile}" 2>/dev/null || true
+
+    local chosen
+    chosen=$(< "${tmpfile}")
+    rm -f "${tmpfile}"
 
     [[ -z "${chosen}" ]] && return 0
 
@@ -183,13 +184,12 @@ inputbox() {
     local text="$2"
     local default="${3:-}"
 
-    # Display → /dev/tty mit echo (kein gum style)
-    {
-        echo ""
-        echo -e "  \033[38;2;96;165;250m◆  ${title}\033[0m"
-    } >/dev/tty
+    echo -e "\n  \033[38;2;96;165;250m◆  ${title}\033[0m" >/dev/tty
 
-    # gum input: TUI via /dev/tty, Eingabewert via stdout (wird gecapturt)
+    # gum input ebenfalls mit Tempfile — stdin bleibt TTY
+    local tmpfile
+    tmpfile=$(mktemp /tmp/manjaro-setup-XXXXX)
+
     gum input \
         --placeholder="${text}" \
         --value="${default}" \
@@ -197,7 +197,10 @@ inputbox() {
         --prompt.foreground="${GUM_BLUE}" \
         --cursor.foreground="${GUM_GREEN}" \
         --width=60 \
-        2>/dev/null || true
+        >"${tmpfile}" 2>/dev/null || true
+
+    cat "${tmpfile}"
+    rm -f "${tmpfile}"
 }
 
 yesno() {
