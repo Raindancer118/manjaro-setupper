@@ -91,12 +91,17 @@ install_pkg() {
             skip "$pkg bereits installiert"
         else
             sudo_refresh
-            gum spin \
+            if gum spin \
                 --spinner=dot \
                 --spinner.foreground="${GUM_BLUE}" \
                 --title="  Installiere ${pkg} ..." \
-                -- sudo -n pacman -S --noconfirm --needed "$pkg" 2>/dev/null
-            success "$pkg installiert"
+                -- sudo -n pacman -S --noconfirm --needed "$pkg"; then
+                success "$pkg installiert"
+            else
+                error "Fehler bei der Installation von ${pkg}"
+                MODULE_STATUS["${CURRENT_MODULE:-}"]=error
+                MODULE_NOTES["${CURRENT_MODULE:-}"]="${MODULE_NOTES["${CURRENT_MODULE:-}"]:-} Fehler bei ${pkg}"
+            fi
         fi
     done
 }
@@ -110,12 +115,17 @@ install_aur() {
         if pkg_installed "$pkg"; then
             skip "$pkg bereits installiert"
         else
-            gum spin \
+            if gum spin \
                 --spinner=dot \
                 --spinner.foreground="${GUM_BLUE}" \
                 --title="  Installiere ${pkg} (AUR) ..." \
-                -- yay -S --noconfirm --needed "$pkg" 2>/dev/null
-            success "$pkg (AUR) installiert"
+                -- yay -S --noconfirm --needed "$pkg"; then
+                success "$pkg (AUR) installiert"
+            else
+                error "Fehler bei der Installation von ${pkg} (AUR)"
+                MODULE_STATUS["${CURRENT_MODULE:-}"]=error
+                MODULE_NOTES["${CURRENT_MODULE:-}"]="${MODULE_NOTES["${CURRENT_MODULE:-}"]:-} Fehler bei ${pkg}"
+            fi
         fi
     done
 }
@@ -146,11 +156,11 @@ checklist() {
 
     # Terminal-Einstellungen sichern
     local old_stty
-    old_stty=$(stty -g 2>/dev/null || true)
+    old_stty=$(stty -g 2>/dev/null || echo "")
 
     _cl_cleanup() {
         tput cnorm 2>/dev/null || true
-        [[ -n "${old_stty}" ]] && stty "${old_stty}" 2>/dev/null || true
+        [[ -n "${old_stty:-}" ]] && stty "${old_stty}" 2>/dev/null || true
     }
     trap '_cl_cleanup' RETURN
 
@@ -474,18 +484,20 @@ run_module() {
     fi
 
     section "Modul: ${MODULE_LABELS[$tag]}"
-
-    if (
+    
+    CURRENT_MODULE="${tag}"
+    if {
         # shellcheck disable=SC1090
         source "${module_file}"
         run_module_main
-    ); then
+    }; then
         MODULE_STATUS[$tag]="${MODULE_STATUS[$tag]:-success}"
     else
         MODULE_STATUS[$tag]="error"
         MODULE_NOTES[$tag]="${MODULE_NOTES[$tag]:-Fehler beim Ausführen}"
         error "Modul ${tag} fehlgeschlagen — weiter mit nächstem Modul."
     fi
+    unset CURRENT_MODULE
 }
 
 # ══════════════════════════════════════════════════════════════

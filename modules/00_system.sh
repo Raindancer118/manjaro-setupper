@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # ── Modul 00: System-Basis & Sicherheit ──────────────────────
 
-declare -A OPTS=()
-
 run_module_main() {
     # Sub-Optionen auswählen
     local selected
@@ -25,6 +23,7 @@ run_module_main() {
 
     [[ -z "${selected}" ]] && { skip "Keine Optionen gewählt"; return; }
 
+    local -A OPTS=()
     for opt in ${selected}; do OPTS[$opt]=1; done
 
     # Timeshift-Typ abfragen
