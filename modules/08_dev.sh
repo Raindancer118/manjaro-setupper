@@ -35,7 +35,6 @@ run_module_main() {
         "snap"         "Snap (snapd) [AUR]"                                "off" \
         "claude_code"  "Claude Code (npm install -g)"                      "off" \
         "gemini"       "Gemini CLI (npm install -g)"                       "off" \
-        "genesis"      "Genesis CLI (immer installiert)"                   "on"  \
         "vscode"       "VS Code [AUR]"                                      "off" \
         "vscodium"     "VS Codium (Open-Source, kein Telemetrie) [AUR]"   "off" \
         "neovim"       "Neovim"                                             "off" \

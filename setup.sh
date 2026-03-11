@@ -81,16 +81,21 @@ section() {
 # ── Paket-Management ──────────────────────────────────────────
 pkg_installed() { pacman -Qi "$1" &>/dev/null; }
 
+# sudo_refresh: Sudo-Ticket erneuern (lautlos wenn bereits authentifiziert).
+# Nötig weil gum spin stdin umleitet und sudo kein Passwort lesen kann.
+sudo_refresh() { sudo -v 2>/dev/tty; }
+
 install_pkg() {
     for pkg in "$@"; do
         if pkg_installed "$pkg"; then
             skip "$pkg bereits installiert"
         else
+            sudo_refresh
             gum spin \
                 --spinner=dot \
                 --spinner.foreground="${GUM_BLUE}" \
                 --title="  Installiere ${pkg} ..." \
-                -- sudo pacman -S --noconfirm --needed "$pkg" 2>/dev/null
+                -- sudo -n pacman -S --noconfirm --needed "$pkg" 2>/dev/null
             success "$pkg installiert"
         fi
     done
@@ -242,7 +247,7 @@ export ANSI_BLUE ANSI_DIM ANSI_GREEN ANSI_YELLOW ANSI_RED ANSI_BOLD ANSI_RESET
 export BLUE DIM GREEN YELLOW RED RESET
 export GUM_BLUE GUM_GREEN GUM_YELLOW GUM_RED GUM_DIM
 export -f info success warn error skip header section
-export -f pkg_installed install_pkg install_aur
+export -f pkg_installed install_pkg install_aur sudo_refresh
 export -f checklist inputbox yesno msgbox
 
 # ── Zusammenfassungs-Tracking ─────────────────────────────────
@@ -288,6 +293,10 @@ bootstrap() {
     if [[ "${EUID}" -eq 0 ]]; then
         warn "Du läufst als root. Normaler User mit sudo-Rechten empfohlen."
     fi
+
+    info "Sudo-Berechtigung wird gesichert ..."
+    sudo -v
+    success "Sudo OK."
 
     info "Bootstrap-Pakete werden installiert (git, curl, base-devel, wget, gum) ..."
     sudo pacman -Sy --noconfirm --needed git curl base-devel wget gum 2>&1 \
@@ -345,10 +354,25 @@ declare -A MODULE_DEFAULT=(
     ["11_kde"]="off"
 )
 
+declare -A MODULE_DESC=(
+    ["00_system"]="System-Basis & Sicherheit  —  Update, Mirrors, Firewall, zram, TRIM ..."
+    ["01_pamac_aur"]="Pamac AUR-Support + yay  —  AUR aktivieren, yay installieren"
+    ["02_shell"]="Shell & Terminal-Tools  —  Zsh, Starship, fzf, bat, eza, btop ..."
+    ["03_browser"]="Browser  —  Firefox, Brave, Chrome, Librewolf, Zen"
+    ["04_communication"]="Kommunikation & Mail  —  Discord, Signal, Telegram, Thunderbird ..."
+    ["05_media"]="Medien, Grafik & Fonts  —  MPV, VLC, OBS, GIMP, Nerd Fonts ..."
+    ["06_office"]="Office-Suiten  —  ONLYOFFICE, LibreOffice, WPS, Okular"
+    ["07_flatpak"]="Flatpak & Flathub  —  Flatpak installieren, Flathub hinzufügen"
+    ["08_dev"]="Entwicklungs-Tools  —  Git, Docker, Node, Python, Rust, VSCode ..."
+    ["09_gaming"]="Gaming  —  Steam, Lutris, Proton-GE, MangoHud, Wine ..."
+    ["10_system_tools"]="Nützliche System-Tools  —  NTFS, Archive, KeePassXC, TLP ..."
+    ["11_kde"]="KDE-Anpassungen  —  Dark Mode, Kvantum, Yakuake, KDE Connect ..."
+)
+
 step1_module_selection() {
     local -a items=()
     for tag in "${MODULE_TAGS[@]}"; do
-        items+=("${tag}" "${MODULE_LABELS[$tag]}" "${MODULE_DEFAULT[$tag]}")
+        items+=("${tag}" "${MODULE_DESC[$tag]}" "${MODULE_DEFAULT[$tag]}")
     done
 
     checklist \
@@ -448,16 +472,20 @@ main() {
     header "Dein System wird konfiguriert."
 
     echo ""
-    gum style --foreground="${GUM_DIM}" --margin="0 2" \
-        "Willkommen! Dieses Script richtet dein frisches Manjaro ein."
+    gum style --foreground="${GUM_DIM}" --margin="0 4" \
+        "Willkommen! Dieses Script richtet dein frisches Manjaro vollständig ein." \
+        "" \
+        "Du wählst per Checkliste welche Module installiert werden sollen." \
+        "Jedes Modul hat eigene Unter-Optionen." \
+        "" \
+        "Tipp: In Checklisten  Space = Toggle  /  Enter = Bestätigen  /  / = Filtern"
     echo ""
-    gum confirm \
+    gum input \
+        --placeholder="[Enter] drücken um zu starten ..." \
+        --prompt="  › " \
         --prompt.foreground="${GUM_BLUE}" \
-        --selected.background="${GUM_BLUE}" \
-        --selected.foreground="#000000" \
-        --unselected.foreground="${GUM_DIM}" \
-        "Onboarding-Flow starten?" \
-        2>/dev/null || { warn "Abgebrochen."; exit 0; }
+        --width=50 \
+        >/dev/null 2>/dev/null || true
 
     # Schritt 1: Modul-Auswahl
     local selected_str

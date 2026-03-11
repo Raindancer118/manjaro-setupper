@@ -49,24 +49,15 @@ run_module_main() {
 
     # ── Starship ───────────────────────────────────────────────
     if [[ -n "${OPTS[starship]:-}" ]]; then
-        if command -v starship &>/dev/null; then
-            skip "Starship bereits installiert"
-        else
-            info "Starship Prompt wird installiert ..."
-            curl -sS https://starship.rs/install.sh | sh -s -- --yes
-            success "Starship installiert."
-        fi
+        # Starship ist im Arch extra-Repo — kein curl-Installer nötig
+        install_pkg starship
         installed_list+=("Starship")
     fi
 
     # ── Zsh-Plugins ────────────────────────────────────────────
     if [[ -n "${OPTS[zsh_plugins]:-}" ]]; then
-        info "Zsh-Plugins werden installiert ..."
-        if command -v yay &>/dev/null; then
-            yay -S --noconfirm --needed zsh-autosuggestions zsh-syntax-highlighting
-        else
-            install_pkg zsh-autosuggestions zsh-syntax-highlighting
-        fi
+        # zsh-autosuggestions + zsh-syntax-highlighting sind im extra-Repo
+        install_pkg zsh-autosuggestions zsh-syntax-highlighting
         installed_list+=("zsh-autosuggestions" "zsh-syntax-highlighting")
     fi
 
