@@ -120,92 +120,117 @@ install_aur() {
     done
 }
 
-# ── gum-Wrapper ───────────────────────────────────────────────
+# ── Interaktive UI: reines Bash (kein gum choose/input) ───────
 #
-# KERNPROBLEM: gum choose/input in $() Subshells erben stdin nicht
-# zuverlässig als TTY. Lösung: gum direkt ausführen (NICHT in $()),
-# Output in Tempfile schreiben. checklist() gibt Tags per printf zurück
-# → das kann der Aufrufer weiterhin mit $() capturen.
+# gum choose funktioniert nicht zuverlässig in $()-Subshells weil
+# gum's TTY-Erkennung unter diesen Bedingungen versagt.
+# Lösung: eigenes Bash-TUI mit stty raw + read + tput.
+# gum bleibt für: gum spin, gum style, gum confirm (dort kein Problem).
 
+# checklist title text tag label default [tag label default ...]
+# Gibt gewählte Tags space-separated aus (gecapturt mit $())
 checklist() {
-    local title="$1"
-    local text="$2"
+    local title="$1" text="$2"
     shift 2
 
-    local -a tags=() labels=() defaults=()
+    local -a tags=() labels=() states=()
     while [[ $# -ge 3 ]]; do
-        tags+=("$1")
-        labels+=("$2")
-        defaults+=("$3")
+        tags+=("$1"); labels+=("$2")
+        [[ "$3" == "on" ]] && states+=(1) || states+=(0)
         shift 3
     done
+    local n=${#tags[@]}
+    local cursor=0 scroll=0
+    local max_vis=18
+    (( n < max_vis )) && max_vis=$n
 
-    local -a selected_args=()
-    for i in "${!defaults[@]}"; do
-        [[ "${defaults[$i]}" == "on" ]] && selected_args+=("--selected=${labels[$i]}")
-    done
+    # Terminal-Einstellungen sichern
+    local old_stty
+    old_stty=$(stty -g 2>/dev/null || true)
 
-    # Display direkt auf Terminal (echo, kein gum style → keine OSC-Queries)
-    echo -e "\n  \033[38;2;96;165;250m◆  ${title}\033[0m" >/dev/tty
-    [[ -n "${text}" ]] && echo -e "  \033[38;2;71;85;105m${text}\033[0m" >/dev/tty
-    echo "" >/dev/tty
+    _cl_cleanup() {
+        tput cnorm 2>/dev/null || true
+        [[ -n "${old_stty}" ]] && stty "${old_stty}" 2>/dev/null || true
+    }
+    trap '_cl_cleanup' RETURN
 
-    # gum choose NICHT in $() — Output in Tempfile.
-    # So bleibt stdin=TTY und das TUI rendert korrekt.
-    local tmpfile
-    tmpfile=$(mktemp /tmp/manjaro-setup-XXXXX)
+    _cl_render() {
+        # Scroll-Fenster anpassen
+        (( cursor < scroll )) && scroll=$cursor
+        (( cursor >= scroll + max_vis )) && scroll=$(( cursor - max_vis + 1 ))
 
-    gum choose --no-limit \
-        "${selected_args[@]}" \
-        --cursor="▶ " \
-        --cursor.foreground="${GUM_BLUE}" \
-        --selected.foreground="${GUM_GREEN}" \
-        --header="" \
-        "${labels[@]}" \
-        >"${tmpfile}" 2>/dev/tty || true
+        tput home 2>/dev/null
+        printf "\n  \033[38;2;96;165;250m◆  %s\033[0m\033[K\n" "${title}"
+        [[ -n "${text}" ]] && printf "  \033[38;2;71;85;105m%s\033[0m\033[K\n" "${text}"
+        printf "\033[K\n"
 
-    local chosen
-    chosen=$(< "${tmpfile}")
-    rm -f "${tmpfile}"
+        local end=$(( scroll + max_vis ))
+        (( end > n )) && end=$n
 
-    [[ -z "${chosen}" ]] && return 0
-
-    # Label → Tag zurückführen
-    local -a result_tags=()
-    while IFS= read -r chosen_lbl; do
-        for i in "${!labels[@]}"; do
-            if [[ "${labels[$i]}" == "${chosen_lbl}" ]]; then
-                result_tags+=("${tags[$i]}")
-                break
+        for (( i=scroll; i<end; i++ )); do
+            local marker="○" mc="\033[38;2;71;85;105m"
+            (( states[i] )) && marker="◉" && mc="\033[38;2;74;222;128m"
+            if (( i == cursor )); then
+                printf "  \033[38;2;96;165;250m▶\033[0m ${mc}${marker}  %s\033[0m\033[K\n" "${labels[$i]}"
+            else
+                printf "    ${mc}${marker}  %s\033[0m\033[K\n" "${labels[$i]}"
             fi
         done
-    done <<< "${chosen}"
+        # Leerzeilen für feste Höhe
+        for (( i=end-scroll; i<max_vis; i++ )); do printf "\033[K\n"; done
+        printf "\n  \033[38;2;71;85;105m[↑↓] Bewegen  [Space] Toggle  [Enter] Bestätigen\033[0m\033[K\n"
+    }
 
-    printf '%s ' "${result_tags[@]}"
+    clear
+    tput civis 2>/dev/null || true
+    stty raw -echo 2>/dev/null || true
+    _cl_render
+
+    local key k2 k3
+    while true; do
+        IFS= read -rsn1 key 2>/dev/null
+        case "${key}" in
+            $'\x1b')
+                IFS= read -rsn1 -t0.1 k2 2>/dev/null || true
+                IFS= read -rsn1 -t0.1 k3 2>/dev/null || true
+                if [[ "${k2}${k3}" == "[A" ]]; then  # Pfeil hoch
+                    (( cursor > 0 )) && (( cursor-- )) || true
+                elif [[ "${k2}${k3}" == "[B" ]]; then  # Pfeil runter
+                    (( cursor < n-1 )) && (( cursor++ )) || true
+                fi
+                ;;
+            " ")  # Space: Toggle
+                (( states[cursor] )) && states[$cursor]=0 || states[$cursor]=1
+                ;;
+            "" | $'\n' | $'\r')  # Enter: Bestätigen
+                break
+                ;;
+        esac
+        _cl_render
+    done
+
+    clear
+
+    # Gewählte Tags zurückgeben
+    local -a result=()
+    for (( i=0; i<n; i++ )); do
+        (( states[i] )) && result+=("${tags[$i]}")
+    done
+    printf '%s ' "${result[@]}"
 }
 
+# inputbox title placeholder [default]
+# Gibt eingegebenen Text aus (gecapturt mit $())
 inputbox() {
-    local title="$1"
-    local text="$2"
-    local default="${3:-}"
-
-    echo -e "\n  \033[38;2;96;165;250m◆  ${title}\033[0m" >/dev/tty
-
-    # gum input ebenfalls mit Tempfile — stdin bleibt TTY
-    local tmpfile
-    tmpfile=$(mktemp /tmp/manjaro-setup-XXXXX)
-
-    gum input \
-        --placeholder="${text}" \
-        --value="${default}" \
-        --prompt="  › " \
-        --prompt.foreground="${GUM_BLUE}" \
-        --cursor.foreground="${GUM_GREEN}" \
-        --width=60 \
-        >"${tmpfile}" 2>/dev/tty || true
-
-    cat "${tmpfile}"
-    rm -f "${tmpfile}"
+    local title="$1" text="${2:-}" default="${3:-}"
+    # Direkt auf /dev/tty ausgeben damit es bei $()-Capture sichtbar bleibt
+    printf "\n  \033[38;2;96;165;250m◆  %s\033[0m\n" "${title}" >/dev/tty
+    [[ -n "${text}" ]] && printf "  \033[38;2;71;85;105m%s\033[0m\n" "${text}" >/dev/tty
+    printf "  \033[38;2;96;165;250m›\033[0m " >/dev/tty
+    # read -e: Readline-Editing; -i: Vorausfüllung; stdin = Terminal
+    local result
+    IFS= read -r -e -i "${default}" result </dev/tty
+    printf "%s" "${result}"
 }
 
 yesno() {
