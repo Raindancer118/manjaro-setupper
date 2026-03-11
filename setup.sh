@@ -159,7 +159,7 @@ checklist() {
     old_stty=$(stty -g 2>/dev/null || echo "")
 
     _cl_cleanup() {
-        tput cnorm 2>/dev/null || true
+        tput cnorm >/dev/tty 2>/dev/null || true
         [[ -n "${old_stty:-}" ]] && stty "${old_stty}" 2>/dev/null || true
     }
     trap '_cl_cleanup' RETURN
@@ -169,10 +169,10 @@ checklist() {
         (( cursor < scroll )) && scroll=$cursor
         (( cursor >= scroll + max_vis )) && scroll=$(( cursor - max_vis + 1 ))
 
-        tput home 2>/dev/null
-        printf "\n  \033[38;2;96;165;250m◆  %s\033[0m\033[K\n" "${title}"
-        [[ -n "${text}" ]] && printf "  \033[38;2;71;85;105m%s\033[0m\033[K\n" "${text}"
-        printf "\033[K\n"
+        tput home >/dev/tty 2>/dev/null
+        printf "\n  \033[38;2;96;165;250m◆  %s\033[0m\033[K\n" "${title}" >/dev/tty
+        [[ -n "${text}" ]] && printf "  \033[38;2;71;85;105m%s\033[0m\033[K\n" "${text}" >/dev/tty
+        printf "\033[K\n" >/dev/tty
 
         local end=$(( scroll + max_vis ))
         (( end > n )) && end=$n
@@ -181,28 +181,28 @@ checklist() {
             local marker="○" mc="\033[38;2;71;85;105m"
             (( states[i] )) && marker="◉" && mc="\033[38;2;74;222;128m"
             if (( i == cursor )); then
-                printf "  \033[38;2;96;165;250m▶\033[0m ${mc}${marker}  %s\033[0m\033[K\n" "${labels[$i]}"
+                printf "  \033[38;2;96;165;250m▶\033[0m ${mc}${marker}  %s\033[0m\033[K\n" "${labels[$i]}" >/dev/tty
             else
-                printf "    ${mc}${marker}  %s\033[0m\033[K\n" "${labels[$i]}"
+                printf "    ${mc}${marker}  %s\033[0m\033[K\n" "${labels[$i]}" >/dev/tty
             fi
         done
         # Leerzeilen für feste Höhe
-        for (( i=end-scroll; i<max_vis; i++ )); do printf "\033[K\n"; done
-        printf "\n  \033[38;2;71;85;105m[↑↓] Bewegen  [Space] Toggle  [Enter] Bestätigen\033[0m\033[K\n"
+        for (( i=end-scroll; i<max_vis; i++ )); do printf "\033[K\n" >/dev/tty; done
+        printf "\n  \033[38;2;71;85;105m[↑↓] Bewegen  [Space] Toggle  [Enter] Bestätigen\033[0m\033[K\n" >/dev/tty
     }
 
-    clear
-    tput civis 2>/dev/null || true
+    clear >/dev/tty
+    tput civis >/dev/tty 2>/dev/null || true
     stty raw -echo 2>/dev/null || true
     _cl_render
 
     local key k2 k3
     while true; do
-        IFS= read -rsn1 key 2>/dev/null
+        IFS= read -rsn1 key </dev/tty 2>/dev/null
         case "${key}" in
             $'\x1b')
-                IFS= read -rsn1 -t0.1 k2 2>/dev/null || true
-                IFS= read -rsn1 -t0.1 k3 2>/dev/null || true
+                IFS= read -rsn1 -t0.1 k2 </dev/tty 2>/dev/null || true
+                IFS= read -rsn1 -t0.1 k3 </dev/tty 2>/dev/null || true
                 if [[ "${k2}${k3}" == "[A" ]]; then  # Pfeil hoch
                     (( cursor > 0 )) && (( cursor-- )) || true
                 elif [[ "${k2}${k3}" == "[B" ]]; then  # Pfeil runter
@@ -219,7 +219,7 @@ checklist() {
         _cl_render
     done
 
-    clear
+    clear >/dev/tty
 
     # Gewählte Tags zurückgeben
     for (( i=0; i<n; i++ )); do
