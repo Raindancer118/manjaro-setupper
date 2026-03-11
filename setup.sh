@@ -39,7 +39,7 @@ DIM='\033[38;2;71;85;105m'
 GREEN='\033[38;2;74;222;128m'
 YELLOW='\033[38;2;250;204;21m'
 RED='\033[38;2;239;68;68m'
-BOLD='\033[1m'
+ANSI_BOLD='\033[1m'
 RESET='\033[0m'
 
 # Hex-Farben für gum
@@ -231,7 +231,7 @@ msgbox() {
 
 # ── Exports für Module ────────────────────────────────────────
 export SCRIPT_DIR MODULES_DIR
-export BLUE DIM GREEN YELLOW RED BOLD RESET
+export BLUE DIM GREEN YELLOW RED ANSI_BOLD RESET
 export GUM_BLUE GUM_GREEN GUM_YELLOW GUM_RED GUM_DIM
 export -f info success warn error skip header section
 export -f pkg_installed install_pkg install_aur
@@ -259,7 +259,7 @@ bootstrap() {
     clear
 
     # Minimal-Banner vor gum (gum noch nicht verfügbar)
-    echo -e "\n${BOLD}${BLUE}  M A N J A R O   S E T U P${RESET}"
+    echo -e "\n${ANSI_BOLD}${BLUE}  M A N J A R O   S E T U P${RESET}"
     echo -e "  ${DIM}──────────────────────────────────${RESET}"
     echo -e "  Bootstrap wird vorbereitet ...\n"
 
