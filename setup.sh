@@ -222,11 +222,9 @@ checklist() {
     clear
 
     # Gewählte Tags zurückgeben
-    local -a result=()
     for (( i=0; i<n; i++ )); do
-        (( states[i] )) && result+=("${tags[$i]}")
+        (( states[i] )) && echo "${tags[$i]}"
     done
-    printf '%s ' "${result[@]}"
 }
 
 # inputbox title placeholder [default]
@@ -427,7 +425,8 @@ step4_confirmation() {
         "Folgende Module werden installiert:"
     echo ""
     for tag in "${selected_modules[@]}"; do
-        gum style --foreground="${GUM_GREEN}" --margin="0 4" "✓  ${MODULE_LABELS[$tag]}"
+        [[ -z "${tag}" ]] && continue
+        gum style --foreground="${GUM_GREEN}" --margin="0 4" "✓  ${MODULE_LABELS[$tag]:-Modul $tag}"
     done
     echo ""
     gum confirm \
@@ -453,7 +452,7 @@ show_summary() {
     for tag in "${MODULE_TAGS[@]}"; do
         local status="${MODULE_STATUS[$tag]:-skipped}"
         local note="${MODULE_NOTES[$tag]:-}"
-        local label="${MODULE_LABELS[$tag]}"
+        local label="${MODULE_LABELS[$tag]:-Modul $tag}"
         local padded
         printf -v padded "%-32s" "${label}"
         case "${status}" in
@@ -525,17 +524,15 @@ main() {
         >/dev/null 2>/dev/null || true
 
     # Schritt 1: Modul-Auswahl
-    local selected_str
-    selected_str=$(step1_module_selection)
+    local -a SELECTED_MODULES=()
+    mapfile -t SELECTED_MODULES < <(step1_module_selection)
 
-    if [[ -z "${selected_str// /}" ]]; then
+    if [[ ${#SELECTED_MODULES[@]} -eq 0 ]]; then
         echo ""
         gum style --foreground="${GUM_YELLOW}" --margin="0 2" \
             "△  Keine Module gewählt. Setup beendet."
         exit 0
     fi
-
-    read -ra SELECTED_MODULES <<< "${selected_str}"
 
     # Schritt 4: Bestätigung
     if ! step4_confirmation "${SELECTED_MODULES[@]}"; then
