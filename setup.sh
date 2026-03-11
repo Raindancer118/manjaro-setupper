@@ -157,7 +157,7 @@ checklist() {
         --selected.foreground="${GUM_GREEN}" \
         --header="" \
         "${labels[@]}" \
-        >"${tmpfile}" 2>/dev/null || true
+        >"${tmpfile}" 2>/dev/tty || true
 
     local chosen
     chosen=$(< "${tmpfile}")
@@ -197,7 +197,7 @@ inputbox() {
         --prompt.foreground="${GUM_BLUE}" \
         --cursor.foreground="${GUM_GREEN}" \
         --width=60 \
-        >"${tmpfile}" 2>/dev/null || true
+        >"${tmpfile}" 2>/dev/tty || true
 
     cat "${tmpfile}"
     rm -f "${tmpfile}"
