@@ -7,8 +7,39 @@ set -euo pipefail
 #  Remote: bash <(curl -fsSL https://raw.githubusercontent.com/Raindancer118/manjaro-setupper/main/setup.sh)
 # ──────────────────────────────────────────────────────────────
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_URL="https://github.com/Raindancer118/manjaro-setupper.git"
+
+# ── Remote-Erkennung & Self-Bootstrap ────────────────────────
+# Wenn via "bash <(curl ...)" gestartet, existiert kein modules/-Ordner
+# neben BASH_SOURCE[0]. In diesem Fall klont das Script sich selbst
+# in ein Temp-Verzeichnis und startet von dort neu.
+_detect_script_dir() {
+    local src="${BASH_SOURCE[0]}"
+    # Prüfe ob src ein echter Dateipfad ist (nicht /dev/fd/...)
+    if [[ "${src}" == /dev/fd/* || "${src}" == /proc/* || ! -f "${src}" ]]; then
+        echo ""
+        return
+    fi
+    cd "$(dirname "${src}")" && pwd
+}
+
+SCRIPT_DIR="$(_detect_script_dir)"
 MODULES_DIR="${SCRIPT_DIR}/modules"
+
+# Falls kein lokales modules/-Verzeichnis gefunden → Repo klonen & neu starten
+if [[ -z "${SCRIPT_DIR}" || ! -d "${MODULES_DIR}" ]]; then
+    TMPDIR_REPO="$(mktemp -d)"
+    echo -e "\n\033[38;2;96;165;250m  ·\033[0m Lade Manjaro Setup herunter ..."
+    if command -v git &>/dev/null; then
+        git clone --depth=1 "${REPO_URL}" "${TMPDIR_REPO}/repo" &>/dev/null
+    else
+        # git noch nicht installiert → erst pacman bootstrap
+        sudo pacman -Sy --noconfirm --needed git &>/dev/null
+        git clone --depth=1 "${REPO_URL}" "${TMPDIR_REPO}/repo" &>/dev/null
+    fi
+    echo -e "  \033[38;2;74;222;128m✓\033[0m Download abgeschlossen. Starte Setup ..."
+    exec bash "${TMPDIR_REPO}/repo/setup.sh" "$@"
+fi
 
 # ── Colors ────────────────────────────────────────────────────
 BLUE='\033[38;2;96;165;250m'
