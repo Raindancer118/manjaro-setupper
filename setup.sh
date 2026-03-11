@@ -142,25 +142,25 @@ checklist() {
         fi
     done
 
-    # Display → /dev/tty (nicht capturen)
+    # Display → /dev/tty mit echo (kein gum style — vermeidet OSC-Queries)
     {
         echo ""
-        gum style --foreground="${GUM_BLUE}" --margin="0 2" "◆  ${title}"
-        [[ -n "${text}" ]] && \
-            gum style --foreground="${GUM_DIM}" --margin="0 2" "${text}"
+        echo -e "  \033[38;2;96;165;250m◆  ${title}\033[0m"
+        [[ -n "${text}" ]] && echo -e "  \033[38;2;71;85;105m${text}\033[0m"
         echo ""
     } >/dev/tty
 
-    # gum choose: Items via stdin, TUI via /dev/tty, Ergebnis via stdout
+    # Items als ARGUMENTE übergeben (NICHT via stdin-Pipe!).
+    # Stdin-Pipe würde gum choose in den non-interaktiven Modus zwingen.
     local chosen
-    chosen=$(printf '%s\n' "${labels[@]}" | \
-        gum choose --no-limit \
-            "${selected_args[@]}" \
-            --cursor="▶ " \
-            --cursor.foreground="${GUM_BLUE}" \
-            --selected.foreground="${GUM_GREEN}" \
-            --header="" \
-            2>/dev/null) || true
+    chosen=$(gum choose --no-limit \
+        "${selected_args[@]}" \
+        --cursor="▶ " \
+        --cursor.foreground="${GUM_BLUE}" \
+        --selected.foreground="${GUM_GREEN}" \
+        --header="" \
+        "${labels[@]}" \
+        2>/dev/null) || true
 
     [[ -z "${chosen}" ]] && return 0
 
@@ -183,10 +183,10 @@ inputbox() {
     local text="$2"
     local default="${3:-}"
 
-    # Display → /dev/tty
+    # Display → /dev/tty mit echo (kein gum style)
     {
         echo ""
-        gum style --foreground="${GUM_BLUE}" --margin="0 2" "◆  ${title}"
+        echo -e "  \033[38;2;96;165;250m◆  ${title}\033[0m"
     } >/dev/tty
 
     # gum input: TUI via /dev/tty, Eingabewert via stdout (wird gecapturt)
