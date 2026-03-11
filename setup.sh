@@ -193,7 +193,7 @@ checklist() {
 
     clear >/dev/tty
     tput civis >/dev/tty 2>/dev/null || true
-    stty raw -echo 2>/dev/null || true
+    stty -icanon -echo min 1 time 0 2>/dev/null || true
     _cl_render
 
     local key k2 k3
